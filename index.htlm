@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Historischer Chatbot – WhatsApp‑Stil</title>
+  <meta name="description" content="Schul-Chatbot im WhatsApp-Stil: Kacheln + Suche, Wikipedia-Whitelist, Ich-Form, einfache Sprache, Emoji-Reaktionen, PDF-Export." />
+  <style>
+    :root{
+      --wa-green:#128C7E; --wa-green-dark:#075E54; --wa-teal:#25D366; --wa-bg:#ECE5DD; --wa-chat:#e2ffc7; --wa-white:#FFFFFF; --wa-gray:#777; --wa-bubble:#fff; --wa-border:#ddd;
+      --accent:#25D366; --danger:#ef4444; --text:#111; --muted:#555; --paper:#f8f4ec;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Noto Sans",Arial,sans-serif;background:#111}
+    .app{display:grid;grid-template-rows:auto 1fr auto;max-width:820px;height:100vh;margin:0 auto;background:var(--wa-bg);}
+
+    /* HEADER (WhatsApp style) */
+    .header{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--wa-green-dark);color:#fff}
+    .avatar{width:36px;height:36px;border-radius:999px;object-fit:cover;background:#ccc}
+    .title{display:flex;flex-direction:column}
+    .name{font-weight:600;line-height:1}
+    .status{font-size:12px;opacity:.9}
+    .actions{margin-left:auto;display:flex;gap:10px;align-items:center}
+    .dot{width:6px;height:6px;border-radius:999px;background:#22c55e;display:inline-block;margin-right:6px}
+    .icon-btn{width:32px;height:32px;border-radius:999px;border:none;background:transparent;color:#fff;cursor:pointer}
+    .icon-btn:hover{background:rgba(255,255,255,.1)}
+
+    /* MAIN */
+    .main{position:relative;overflow:hidden}
+    .pane{position:absolute;inset:0;display:none}
+    .pane.active{display:block}
+
+    /* START PANE */
+    .start{padding:20px;display:flex;flex-direction:column;gap:16px}
+    .card{background:#fff;border-radius:14px;border:1px solid var(--wa-border);padding:14px}
+    .grid{display:grid;gap:12px}
+    @media(min-width:720px){.grid.cols-3{grid-template-columns:repeat(3,1fr)}}
+    @media(max-width:719px){.grid.cols-3{grid-template-columns:repeat(2,1fr)}}
+    .tile{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--wa-border);border-radius:12px;background:#fff;cursor:pointer;transition:transform .05s ease}
+    .tile:hover{transform:translateY(-1px)}
+    .tile img{width:44px;height:44px;border-radius:999px;object-fit:cover;background:#ddd}
+    .tile .tname{font-weight:600}
+    .muted{color:var(--muted)}
+    .row{display:flex;gap:10px;align-items:center}
+    .row.wrap{flex-wrap:wrap}
+    .input{flex:1;background:#fff;border:1px solid var(--wa-border);border-radius:12px;padding:10px}
+    .btn{background:var(--wa-green);color:#fff;border:0;border-radius:12px;padding:10px 14px;cursor:pointer;font-weight:600}
+    .btn.secondary{background:#e5e7eb;color:#111}
+
+    /* CHAT LIST */
+    .chat{height:100%;display:flex;flex-direction:column;justify-content:flex-end;background:url('https://raw.githubusercontent.com/iamkun/dayjs/gh-pages/assets/img/whatsapp-bg.png');background-size:cover}
+    .messages{padding:14px;overflow:auto;display:flex;flex-direction:column;gap:6px}
+    .bubble{max-width:78%;padding:8px 10px;border-radius:10px;position:relative;word-wrap:break-word;white-space:pre-wrap}
+    .me{align-self:flex-end;background:var(--wa-chat)}
+    .bot{align-self:flex-start;background:var(--wa-bubble)}
+    .time{font-size:11px;color:#666;margin-top:4px;text-align:right}
+
+    /* FOOTER INPUT BAR */
+    .composer{display:flex;align-items:center;gap:8px;background:#F0F2F5;padding:8px;border-top:1px solid #ddd}
+    .circle{width:36px;height:36px;border-radius:999px;border:none;background:#fff;display:inline-grid;place-items:center;cursor:pointer}
+    .composer input{flex:1;border:0;border-radius:20px;padding:10px 14px;outline:none}
+    .send{background:var(--wa-teal);color:#fff}
+
+    /* NAME/KLASSE DIALOG */
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:20}
+    .dialog{width:min(560px,92vw);background:#fff;border-radius:16px;border:1px solid #ddd;padding:16px}
+    .dialog h3{margin:0 0 8px 0}
+
+    /* TOAST */
+    .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:8px 12px;border-radius:999px;font-size:13px;opacity:.95;z-index:50;display:none}
+
+    /* HIDDEN teacher panel */
+    .teacher{position:fixed;right:12px;bottom:72px;background:#fff;border:1px solid #ddd;border-radius:12px;padding:10px;width:280px;display:none;z-index:40}
+    .teacher h4{margin:0 0 6px 0}
+    .small{font-size:12px;color:#555}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="header" id="header">
+      <img id="headerAvatar" class="avatar" alt="avatar" src="https://upload.wikimedia.org/wikipedia/commons/8/8a/Einstein_1921_by_F_Schmutzer_-_restoration.jpg"/>
+      <div class="title">
+        <div id="headerName" class="name">Historische Person</div>
+        <div id="headerStatus" class="status"><span class="dot"></span>online</div>
+      </div>
+      <div class="actions">
+        <button class="icon-btn" id="menuBtn" title="Menü">⋮</button>
+      </div>
+    </div>
+
+    <div class="main">
+      <!-- START PANE -->
+      <section class="pane start active" id="startPane">
+        <div class="card">
+          <h3>Wer bist du?</h3>
+          <div class="row wrap">
+            <input id="studentName" class="input" placeholder="Dein Vorname (Pflicht)"/>
+            <input id="studentClass" class="input" placeholder="Deine Klasse (optional, z. B. 7a)"/>
+          </div>
+        </div>
+        <div class="card">
+          <div class="row wrap" style="align-items:center">
+            <input id="search" class="input" placeholder="Person suchen (z. B. Marie Curie)"/>
+            <button id="searchBtn" class="btn">Öffnen</button>
+          </div>
+          <p class="muted">Oder wähle eine Person aus den Kacheln:</p>
+          <div class="grid cols-3" id="tiles"></div>
+        </div>
+        <div class="small muted">Hinweis: Antworten kommen in Ich-Form und einfacher Sprache. Inhalte basieren auf Wikipedia (Live-Whitelist).</div>
+      </section>
+
+      <!-- CHAT PANE -->
+      <section class="pane chat" id="chatPane">
+        <div class="messages" id="messages"></div>
+      </section>
+
+      <!-- NAME DIALOG (enforced) -->
+      <div class="modal" id="nameModal" style="display:none">
+        <div class="dialog">
+          <h3>Bitte gib deinen Vornamen an</h3>
+          <div class="row wrap">
+            <input id="modalName" class="input" placeholder="Vorname"/>
+            <input id="modalClass" class="input" placeholder="Klasse (optional)"/>
+            <button id="modalOk" class="btn">Weiter</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TEACHER PANEL (toggle: Ctrl+L) -->
+      <div class="teacher" id="teacherPanel">
+        <h4>Lehrer:in</h4>
+        <label><input type="radio" name="mode" value="neutral" checked> Neutral (einfach)</label><br/>
+        <label><input type="radio" name="mode" value="historic"> Historisch gefärbt (einfach)</label><br/>
+        <label><input type="radio" name="mode" value="quotes"> Zitate + Erklärung</label>
+        <div class="small" style="margin-top:6px">Strg+L zum Schließen. Quellenpassagen werden intern genutzt; keine Anzeige in der Schüler-UI.</div>
+      </div>
+
+      <div class="toast" id="toast">Gespeichert.</div>
+    </div>
+
+    <!-- COMPOSER -->
+    <div class="composer" id="composer" style="display:none">
+      <button class="circle" id="pdfBtn" title="Als PDF speichern">📄</button>
+      <input id="input" placeholder="Nachricht schreiben…" />
+      <button class="circle send" id="sendBtn" title="Senden">➤</button>
+    </div>
+  </div>
+
+  <!-- libs: wikipedia via REST (no lib needed), html2pdf for export, transformers.js for embeddings -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-YcsIPj7rRZfUQK0wB0zq1wKX2z1nY/1vE2L7h3Cw3eY3VapmHTp8m6dR3vG9C2n9tDqHf4JwHQAXo4Z45C0GvA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script type="module">
+    import { pipeline } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
+
+    // ---- CONFIG ----
+    const START_TILES = [
+      { name: 'Albert Einstein', img: 'https://upload.wikimedia.org/wikipedia/commons/8/8a/Einstein_1921_by_F_Schmutzer_-_restoration.jpg' },
+      { name: 'Adolf Hitler', img: 'https://upload.wikimedia.org/wikipedia/commons/d/d4/Hitler_portrait_crop.jpg' },
+      { name: 'Jesus', img: 'https://upload.wikimedia.org/wikipedia/commons/5/5f/Christ_Pantocrator_Deesis_mosaic_Hagia_Sophia.jpg' },
+      { name: 'Heinrich VIII. von England', img: 'https://upload.wikimedia.org/wikipedia/commons/3/3b/Hans_Holbein%2C_the_Younger_-_Henry_VIII_of_England_-_Google_Art_Project.jpg' },
+      { name: 'Pelé', img: 'https://upload.wikimedia.org/wikipedia/commons/6/6b/Pele_conference_2018.jpg' },
+      { name: 'Diego Maradona', img: 'https://upload.wikimedia.org/wikipedia/commons/4/43/Maradona-Mundial_86_con_la_copa.jpg' },
+      { name: 'Josef Stalin', img: 'https://upload.wikimedia.org/wikipedia/commons/4/45/Iosif_Stalin_1942.jpg' },
+      { name: 'Leonardo da Vinci', img: 'https://upload.wikimedia.org/wikipedia/commons/3/33/Leonardo_self.jpg' },
+      { name: 'Marie Curie', img: 'https://upload.wikimedia.org/wikipedia/commons/7/7e/Marie_Curie_c1920.jpg' },
+      { name: 'Napoleon Bonaparte', img: 'https://upload.wikimedia.org/wikipedia/commons/5/50/Jean-Auguste-Dominique_Ingres%2C_The_Emperor_Napoleon_in_His_Study_at_the_Tuileries%2C_1812.jpg' },
+      { name: 'Pablo Picasso', img: 'https://upload.wikimedia.org/wikipedia/commons/9/99/Pablo_picasso_1.jpg' },
+      { name: 'Elizabeth II.', img: 'https://upload.wikimedia.org/wikipedia/commons/3/3b/Queen_Elizabeth_II_in_March_2015.jpg' },
+    ];
+
+    const WIKI_SUMMARY = (title) => `https://de.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+    const WIKI_PLAIN = (title) => `https://de.wikipedia.org/api/rest_v1/page/plain/${encodeURIComponent(title)}`;
+
+    const EMOJI_GROUPS = {
+      positive: /[\u{1F600}-\u{1F64F}\u{1F44D}\u{1F389}]/u, // 😀…🙏 + 👍 + 🎉
+      negative: /[\u{1F61E}\u{1F622}\u{1F625}\u{1F62D}\u{1F494}\u{1F620}]/u, // 😞😢😥😭💔😠
+      thinking: /[\u{1F914}\u{2753}\u{1F4DA}]/u, // 🤔❓📚
+      war: /[\u{2694}\u{1F6E1}\u{1F525}\u{1F4A3}]/u, // ⚔️🛡️🔥💣
+      science: /[\u{269B}\u{1F52C}\u{1F9EA}\u{1F4D0}]/u, // ⚛️🔬🧪📐
+      religion: /[\u{271D}\u{262A}\u{2721}\u{1F64F}]/u, // ✝️☪️✡️🙏
+    };
+
+    const EMOJI_REPLIES = {
+      positive: "Es freut mich, dass du so denkst.",
+      negative: "Ich merke deine Traurigkeit. Auch in meinem Leben gab es schwere Zeiten.",
+      thinking: "Du wirkst nachdenklich. Frag mich ruhig, ich antworte so gut ich kann.",
+      war: "Kämpfe und Streit sind Teil vieler Geschichten. Ich kenne sie aus meiner Zeit.",
+      science: "Diese Zeichen passen zu meinem Forschen. Frag mich gern zu meinen Entdeckungen.",
+      religion: "Glaube war in meiner Zeit wichtig. Ich kann dir dazu berichten.",
+      other: "Das verstehe ich nicht gut. Schreib deine Frage bitte mit Worten.",
+    };
+
+    const state = {
+      student: { name: '', klass: '' },
+      person: null,
+      mode: 'neutral', // 'neutral' | 'historic' | 'quotes'
+      chunks: [],
+      embeds: [],
+      embedder: null,
+      loading: false,
+      typingTimer: null,
+      history: [],
+    };
+
+    // ---- UI refs ----
+    const startPane = document.getElementById('startPane');
+    const chatPane = document.getElementById('chatPane');
+    const tiles = document.getElementById('tiles');
+    const messagesDiv = document.getElementById('messages');
+    const headerName = document.getElementById('headerName');
+    const headerAvatar = document.getElementById('headerAvatar');
+    const headerStatus = document.getElementById('headerStatus');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('sendBtn');
+    const pdfBtn = document.getElementById('pdfBtn');
+    const searchEl = document.getElementById('search');
+    const searchBtn = document.getElementById('searchBtn');
+    const studentName = document.getElementById('studentName');
+    const studentClass = document.getElementById('studentClass');
+    const composer = document.getElementById('composer');
+    const teacherPanel = document.getElementById('teacherPanel');
+
+    // ---- helpers ----
+    function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',1400); }
+    function fmtTime(d=new Date()){ return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+    function addBubble(text, who='me'){ const wrap=document.createElement('div'); wrap.className=`bubble ${who}`; wrap.innerText=text; const time=document.createElement('div'); time.className='time'; time.textContent=fmtTime(); wrap.appendChild(time); messagesDiv.appendChild(wrap); messagesDiv.scrollTop = messagesDiv.scrollHeight; }
+    function setPane(id){ for(const p of document.querySelectorAll('.pane')) p.classList.remove('active'); document.getElementById(id).classList.add('active'); }
+    function validateName(){ const v=(studentName.value||'').trim(); if(!v){ document.getElementById('nameModal').style.display='flex'; } else { state.student.name=v; state.student.klass=(studentClass.value||'').trim(); composer.style.display='flex'; } }
+    function setHeader(person){ headerName.textContent = person.name; headerAvatar.src = person.img || headerAvatar.src; headerStatus.innerHTML = '<span class="dot"></span>online'; }
+
+    // ---- tiles render ----
+    function renderTiles(){ tiles.innerHTML=''; START_TILES.forEach(p=>{ const el=document.createElement('div'); el.className='tile'; el.innerHTML = `<img alt="${p.name}" src="${p.img}"><div class="tname">${p.name}</div>`; el.addEventListener('click', ()=> openPerson(p.name, p.img)); tiles.appendChild(el); }); }
+
+    // ---- wikipedia load & RAG prep ----
+    async function ensureEmbedder(){ if(state.embedder) return; state.embedder = await pipeline('feature-extraction','Xenova/all-MiniLM-L6-v2'); }
+    function splitChunks(text, max=1100, overlap=120){ const sents = text.split(/(?<=[.!?])\s+/); const chunks=[]; let cur=[], len=0; for(const s of sents){ const L=s.length; if(len+L>max && cur.length){ const joined=cur.join(' ').trim(); chunks.push(joined); const tail = overlap>0? joined.slice(-overlap):''; cur = tail? [tail, s] : [s]; len = (tail? tail.length:0)+L; } else { cur.push(s); len+=L; } } if(cur.length) chunks.push(cur.join(' ').trim()); return chunks.filter(Boolean); }
+    function cosine(a,b){ let dot=0,na=0,nb=0; for(let i=0;i<a.length;i++){ dot+=a[i]*b[i]; na+=a[i]*a[i]; nb+=b[i]*b[i]; } return dot/(Math.sqrt(na)*Math.sqrt(nb)); }
+
+    async function openPerson(title, imgHint){
+      // enforce name first
+      if(!(studentName.value||'').trim()){ validateName(); return; }
+      state.student.name = (studentName.value||'').trim();
+      state.student.klass = (studentClass.value||'').trim();
+
+      setPane('chatPane'); composer.style.display='flex';
+      messagesDiv.innerHTML='';
+      addBubble(`Hallo ${state.student.name}. Mit wem möchtest du sprechen?`, 'bot');
+
+      // fetch wikipedia
+      try{
+        const sum = await fetch(WIKI_SUMMARY(title), {headers:{'accept':'application/json'}}).then(r=>r.json());
+        const img = (sum?.thumbnail?.source) || imgHint || headerAvatar.src;
+        const normTitle = sum?.title || title;
+        const plain = await fetch(WIKI_PLAIN(normTitle), {headers:{'accept':'text/plain'}}).then(r=>r.text());
+
+        state.person = { name: normTitle, img, text: plain };
+        setHeader(state.person);
+
+        await ensureEmbedder();
+        state.chunks = splitChunks(plain, 1100, 120);
+        state.embeds = [];
+        for(const ch of state.chunks){ const out = await state.embedder(ch, {pooling:'mean', normalize:true}); state.embeds.push(out.data); }
+
+        // Begrüßung der Person in Ich-Form
+        addTyping();
+        await sleep(700);
+        stopTyping();
+        addBubble(greet(state.person.name, state.student.name), 'bot');
+
+      }catch(e){ console.error(e); addBubble('Konnte den Wikipedia-Artikel nicht laden. Bitte später erneut versuchen.','bot'); }
+    }
+
+    // ---- typing indicator (status only) ----
+    function addTyping(){ headerStatus.innerHTML = '<span class="dot" style="background:#ffd166"></span>schreibt gerade…'; }
+    function stopTyping(){ headerStatus.innerHTML = '<span class="dot"></span>online'; }
+
+    // ---- answer generation ----
+    function isEmojiOnly(text){ const t=(text||'').trim(); if(!t) return false; // at least one non-space
+      // if removing all letters/digits/punct leaves something, assume emoji heavy
+      const noWord = t.replace(/[\p{L}\p{N}\p{P}\p{S}]/gu,''); // naive
+      // fallback: if there is at least one emoji
+      const emojiRegex=/[\p{Extended_Pictographic}]/u; 
+      return emojiRegex.test(t) && t.replace(/[\p{Extended_Pictographic}\s]/gu,'')==='';
+    }
+
+    function emojiReply(text){
+      for(const [k,re] of Object.entries(EMOJI_GROUPS)) if(re.test(text)) return EMOJI_REPLIES[k];
+      return EMOJI_REPLIES.other;
+    }
+
+    function styleHistoricSimple(s){ // very light historical flavor, short
+      return s
+        .replace(/wird bekannt/g,'ward bekannt')
+        .replace(/wurde/g,'ward')
+        .replace(/konnte/g,'vermochte')
+        .replace(/Feldzug/g,'Kriegszug');
+    }
+
+    function simplify(text){ // short sentences, <= ~15 words
+      return text.split(/(?<=[.!?])\s+/).map(s=>{
+        const words=s.trim().split(/\s+/);
+        if(words.length>18){ return words.slice(0,18).join(' ')+'…'; }
+        return s.trim();
+      }).filter(Boolean).join(' ');
+    }
+
+    function buildAnswerFromPassages(q, passages){
+      // pick top 2 sentences per best chunk that include query terms
+      const qTerms=(q.toLowerCase().match(/[\p{L}]{3,}/gu)||[]);
+      const sents=[]; const used=new Set();
+      for(const p of passages){
+        const ss=p.split(/(?<=[.!?])\s+/);
+        ss.sort((a,b)=>score(b,qTerms)-score(a,qTerms));
+        for(const s of ss.slice(0,2)) if(!used.has(s)){ sents.push(s); used.add(s); if(sents.length>=4) break; }
+        if(sents.length>=4) break;
+      }
+      if(!sents.length) return 'Dazu kann ich dir leider nichts sagen.';
+      return simplify(sents.join(' '));
+    }
+
+    function score(sent, terms){ const t=sent.toLowerCase(); return terms.reduce((acc,w)=>acc+(t.includes(w)?1:0),0); }
+
+    async function answerQuestion(q){
+      // Emoji-only quick path
+      if(isEmojiOnly(q)){
+        const r = emojiReply(q);
+        return personaWrap(r);
+      }
+      // RAG
+      const qEmb = (await state.embedder(q, {pooling:'mean', normalize:true})).data;
+      const scores = state.embeds.map((e,i)=>({i, sim: cosine(e,qEmb)})).sort((a,b)=>b.sim-a.sim);
+      const usable = scores.filter(o=>o.sim>=0.30).slice(0,5);
+      if(!usable.length) return personaWrap('Dazu kann ich dir leider nichts sagen.');
+      const passages = usable.map(u=>state.chunks[u.i]);
+      let ans = buildAnswerFromPassages(q, passages);
+      return personaWrap(ans, passages);
+    }
+
+    function personaWrap(text){
+      const mode=state.mode;
+      let t=text;
+      if(mode==='historic') t = styleHistoricSimple(t);
+      if(mode==='quotes'){
+        // Keep simple: if quotes exist in passages, prepend one short quote (omitted here for client-only safety)
+        // For now, we maintain simple explanation style to avoid fake quotes.
+      }
+      // add light address with student's first name at start if first bot reply after a user message
+      if(state.student?.name){
+        const name = state.student.name.split(/\s+/)[0];
+        // optional prepend only when not already addressed
+        if(!/^hallo|hey|guten tag|liebe|lieber/i.test(t)){
+          t = `${t}`; // keep minimal; addressing inline can feel repetitive.
+        }
+      }
+      return t;
+    }
+
+    // ---- events ----
+    sendBtn.addEventListener('click', onSend);
+    inputEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); onSend(); }});
+    pdfBtn.addEventListener('click', exportPDF);
+    searchBtn.addEventListener('click', ()=>{ const q=(searchEl.value||'').trim(); if(q) openPerson(q); });
+
+    document.addEventListener('keydown', (e)=>{
+      if(e.ctrlKey && (e.key.toLowerCase()==='l')){ teacherPanel.style.display = teacherPanel.style.display==='block'?'none':'block'; }
+    });
+
+    teacherPanel.addEventListener('change', (e)=>{ if(e.target.name==='mode'){ state.mode = e.target.value; showToast('Sprachmodus: '+state.mode); }});
+
+    // name modal
+    document.getElementById('modalOk').addEventListener('click', ()=>{
+      const n=(document.getElementById('modalName').value||'').trim();
+      if(!n) return;
+      studentName.value=n; studentClass.value=(document.getElementById('modalClass').value||'').trim();
+      state.student.name=n; state.student.klass=studentClass.value.trim();
+      document.getElementById('nameModal').style.display='none'; composer.style.display='flex';
+    });
+
+    // initial
+    renderTiles();
+
+    // ---- send flow ----
+    async function onSend(){
+      const text=(inputEl.value||'').trim();
+      if(!text) return;
+      addBubble(text,'me'); inputEl.value='';
+      addTyping();
+      const reply = await answerQuestion(text);
+      await sleep(600);
+      stopTyping();
+      addBubble(reply,'bot');
+    }
+
+    function greet(personName, studentFirst){
+      return `Guten Tag, ${studentFirst}. Ich bin ${personName}. Stell mir deine Frage.`;
+    }
+
+    function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+    // ---- PDF export ----
+    function exportPDF(){
+      const container = document.createElement('div');
+      container.style.fontFamily='Arial, sans-serif';
+      container.style.padding='10px';
+      const header = document.createElement('div');
+      header.innerHTML = `<h2 style="margin:0 0 6px 0">Chat mit ${state?.person?.name || 'Person'}</h2>
+        <div style="font-size:12px;color:#444">Name: ${state.student.name||'-'} · Klasse: ${state.student.klass||'-'} · Datum: ${new Date().toLocaleString()}</div><hr/>`;
+      container.appendChild(header);
+      // copy bubbles as simple blocks
+      for(const node of messagesDiv.querySelectorAll('.bubble')){
+        const block = document.createElement('div');
+        const who = node.classList.contains('me')? 'Du':'Person';
+        block.style.margin='8px 0';
+        block.innerHTML = `<div style="font-weight:600">${who}</div><div>${node.innerText.replace(/\n\d{2}:\d{2}$/,'')}</div>`;
+        container.appendChild(block);
+      }
+      html2pdf().set({ margin: 10, filename: `Chat_${(state?.person?.name||'Person').replace(/\s+/g,'_')}.pdf`, image:{type:'jpeg', quality:0.98}, html2canvas:{scale:2}, jsPDF:{unit:'mm', format:'a4', orientation:'portrait'} }).from(container).save();
+    }
+
+  </script>
+</body>
+</html>
