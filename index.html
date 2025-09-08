@@ -13,7 +13,7 @@
     *{box-sizing:border-box}
     html,body{height:100%}
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Noto Sans",Arial,sans-serif;background:#111}
-    .app{display:grid;grid-template-rows:auto 1fr auto;max-width:820px;height:100vh;margin:0 auto;background:var(--wa-bg);}
+    .app{display:grid;grid-template-rows:auto 1fr auto;max-width:820px;height:100dvh;margin:0 auto;background:var(--wa-bg);overflow:hidden;}
 
     /* HEADER (WhatsApp style) */
     .header{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--wa-green-dark);color:#fff}
@@ -32,7 +32,7 @@
     .pane.active{display:block}
 
     /* START PANE */
-    .start{padding:20px;display:flex;flex-direction:column;gap:16px}
+    .start{padding:20px;display:flex;flex-direction:column;gap:16px overflow:auto;}
     .card{background:#fff;border-radius:14px;border:1px solid var(--wa-border);padding:14px}
     .grid{display:grid;gap:12px}
     @media(min-width:720px){.grid.cols-3{grid-template-columns:repeat(3,1fr)}}
@@ -150,6 +150,7 @@
   <!-- libs: wikipedia via REST (no lib needed), html2pdf for export, transformers.js for embeddings -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-YcsIPj7rRZfUQK0wB0zq1wKX2z1nY/1vE2L7h3Cw3eY3VapmHTp8m6dR3vG9C2n9tDqHf4JwHQAXo4Z45C0GvA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script type="module">
+    window.addEventListener('DOMContentLoaded', () => {
     import { pipeline } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
 
     // ---- CONFIG ----
@@ -200,6 +201,7 @@
       loading: false,
       typingTimer: null,
       history: [],
+      pending: null,
     };
 
     // ---- UI refs ----
@@ -209,6 +211,8 @@
     const messagesDiv = document.getElementById('messages');
     const headerName = document.getElementById('headerName');
     const headerAvatar = document.getElementById('headerAvatar');
+    headerAvatar.addEventListener('error', ()=>{ headerAvatar.src = PLACEHOLDER; });
+    headerAvatar.setAttribute('referrerpolicy','no-referrer');
     const headerStatus = document.getElementById('headerStatus');
     const inputEl = document.getElementById('input');
     const sendBtn = document.getElementById('sendBtn');
@@ -229,7 +233,7 @@
     function setHeader(person){ headerName.textContent = person.name; headerAvatar.src = person.img || headerAvatar.src; headerStatus.innerHTML = '<span class="dot"></span>online'; }
 
     // ---- tiles render ----
-    function renderTiles(){ tiles.innerHTML=''; START_TILES.forEach(p=>{ const el=document.createElement('div'); el.className='tile'; el.innerHTML = `<img alt="${p.name}" src="${p.img}"><div class="tname">${p.name}</div>`; el.addEventListener('click', ()=> openPerson(p.name, p.img)); tiles.appendChild(el); }); }
+    function renderTiles(){ tiles.innerHTML=''; START_TILES.forEach(p=>{ const el=document.createElement('div'); el.className='tile'; const img=document.createElement('img'); img.alt=p.name; img.loading='lazy'; img.referrerPolicy='no-referrer'; img.src=p.img; img.onerror=()=>{ img.src=PLACEHOLDER; }; const name=document.createElement('div'); name.className='tname'; name.textContent=p.name; el.appendChild(img); el.appendChild(name); el.addEventListener('click', ()=> openPerson(p.name, p.img)); tiles.appendChild(el); }); }" src="${p.img}"><div class="tname">${p.name}</div>`; el.addEventListener('click', ()=> openPerson(p.name, p.img)); tiles.appendChild(el); }); }
 
     // ---- wikipedia load & RAG prep ----
     async function ensureEmbedder(){ if(state.embedder) return; state.embedder = await pipeline('feature-extraction','Xenova/all-MiniLM-L6-v2'); }
@@ -238,13 +242,16 @@
 
     async function openPerson(title, imgHint){
       // enforce name first
-      if(!(studentName.value||'').trim()){ validateName(); return; }
+      if(!(studentName.value||'').trim()){
+        state.pending = { title, imgHint };
+        validateName();
+        return;
+      }
       state.student.name = (studentName.value||'').trim();
       state.student.klass = (studentClass.value||'').trim();
 
       setPane('chatPane'); composer.style.display='flex';
       messagesDiv.innerHTML='';
-      addBubble(`Hallo ${state.student.name}. Mit wem möchtest du sprechen?`, 'bot');
 
       // fetch wikipedia
       try{
@@ -374,6 +381,7 @@
       studentName.value=n; studentClass.value=(document.getElementById('modalClass').value||'').trim();
       state.student.name=n; state.student.klass=studentClass.value.trim();
       document.getElementById('nameModal').style.display='none'; composer.style.display='flex';
+      if(state.pending){ const { title, imgHint } = state.pending; state.pending=null; openPerson(title, imgHint); }
     });
 
     // initial
@@ -416,7 +424,7 @@
       }
       html2pdf().set({ margin: 10, filename: `Chat_${(state?.person?.name||'Person').replace(/\s+/g,'_')}.pdf`, image:{type:'jpeg', quality:0.98}, html2canvas:{scale:2}, jsPDF:{unit:'mm', format:'a4', orientation:'portrait'} }).from(container).save();
     }
-
+    });
   </script>
 </body>
 </html>
